@@ -126,7 +126,54 @@ textarea:focus{
   opacity:1;
 }
 
-.phone-control,
+ .phone-control{
+  display:flex;
+  align-items:stretch;
+  width:100%;
+  height:56px;
+  min-height:56px;
+  padding:0;
+  margin:0;
+  border:0;
+  border-radius:0;
+  background:transparent;
+}
+
+.phone-prefix{
+  flex:0 0 82px;
+  width:82px;
+  height:56px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  padding:0 10px;
+  border:1.5px solid var(--border);
+  border-right:0;
+  border-radius:12px 0 0 12px;
+  background:#fff;
+  color:var(--text);
+  font:inherit;
+  font-size:15px;
+  font-weight:600;
+}
+
+.phone-prefix .flag{
+  font-size:20px;
+  line-height:1;
+}
+
+.phone-control input{
+  flex:1 1 auto;
+  width:calc(100% - 82px);
+  height:56px;
+  min-height:56px;
+  margin:0;
+  border-radius:0 12px 12px 0;
+  position:relative;
+  z-index:1;
+}
+
 select{
   display:block;
   width:100%;
@@ -284,19 +331,16 @@ button:disabled{
   input:not([type="checkbox"]),textarea{font-size:16px}
 
   .phone-control{
-    flex-direction:column;
+    flex-direction:row;
   }
 
-  .phone-prefix,
-  .location-btn{
-    width:100%;
-    flex-basis:auto;
+  .phone-prefix{
+    flex:0 0 82px;
+    width:82px;
   }
-
-  .phone-prefix{justify-content:center}
 
   .phone-control input{
-    width:100%;
+    width:calc(100% - 82px);
   }
 
   .gdpr-disclaimer{
