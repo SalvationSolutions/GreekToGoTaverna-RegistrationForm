@@ -617,7 +617,7 @@ button:disabled{
 <script>
 // Existing Google Apps Script Web App URL.
 // Paste your existing /exec URL here.
-const GOOGLE_SCRIPT_URL = "PASTE_YOUR_EXISTING_GOOGLE_APPS_SCRIPT_EXEC_URL_HERE";
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxGeJrdRu0uBz5fGB5XruWKEZt2Ckyd5e_YSB9AS65Fq_l_DIiKcj86AAqvkWbUemggcg/exec";
 
 const form=document.getElementById("guestForm");
 const btn=document.getElementById("registerBtn");
@@ -639,59 +639,78 @@ function dateTime(d){
 
 form.addEventListener("submit",async e=>{
   e.preventDefault();
-  if(GOOGLE_SCRIPT_URL.includes("PASTE_YOUR_EXISTING")){
-    status("Google Sheets is not configured. Add your existing Apps Script /exec URL in the HTML.","error");
-    return;
-  }
+
   const firstName=document.getElementById("firstName").value.trim();
   const lastName=document.getElementById("lastName").value.trim();
   const rawPhone=document.getElementById("phone").value.replace(/\D/g,"");
   const email=document.getElementById("email").value.trim();
+  const birthday=document.getElementById("birthday").value;
+  const city=document.getElementById("city").value;
+  const favorite=document.getElementById("favorite").value.trim();
+
+  if(!firstName || !lastName || !email || !city){
+    status("Please complete all required fields.","error");
+    return;
+  }
+
   if(!/^9\d{9}$/.test(rawPhone)){
     status("Enter a valid Philippine mobile number, e.g. 9171234567.","error");
     return;
   }
+
   const phone="+63"+rawPhone;
-  btn.disabled=true; btn.textContent="Registering...";
+
+  if(!document.getElementById("gdprConsent").checked){
+    status("Please accept the Privacy & consent checkbox before registering.","error");
+    return;
+  }
+
+  const guest={
+    id:id(),
+    firstName:firstName,
+    lastName:lastName,
+    phone:phone,
+    email:email,
+    birthday:birthday,
+    city:city,
+    favorite:favorite,
+    joinDate:dateTime(new Date())
+  };
+
+  btn.disabled=true;
+  btn.textContent="Registering...";
+
   try{
-    const r=await fetch(GOOGLE_SCRIPT_URL+"?ts="+Date.now(),{cache:"no-store"});
-    if(!r.ok) throw new Error("Could not read CRM.");
-    const data=await r.json();
-    if(!Array.isArray(data.guests)) throw new Error("Invalid CRM response.");
-    const guests=data.guests;
-    const normalized=phone.replace(/\D/g,"");
-    if(guests.some(g=>String(g.phone||"").replace(/\D/g,"")===normalized && normalized)){
-      throw new Error("This phone number is already registered.");
-    }
-    const guest={
-      id:id(),
-      name:(firstName+" "+lastName).trim(),
-      phone:phone,
-      email:email,
-      visits:0,lastVisit:"",totalSpent:0,
-      favorite:document.getElementById("favorite").value.trim(),
-      birthday:document.getElementById("birthday").value,
-      segment:"",notes:"",
-      city:cityInput.value,
-      joinDate:dateTime(new Date())
-    };
-    guests.push(guest);
     const save=await fetch(GOOGLE_SCRIPT_URL,{
       method:"POST",
       headers:{"Content-Type":"text/plain;charset=utf-8"},
-      body:JSON.stringify({guests:guests,confirmationGuest:guest})
+      body:JSON.stringify({action:"registerGuest",guest:guest,confirmationGuest:guest}),
+      redirect:"follow"
     });
-    if(!save.ok) throw new Error("Could not save guest.");
+
+    if(!save.ok) throw new Error("Google Sheets returned HTTP "+save.status+".");
+
     const result=await save.json();
-    if(result.status!=="ok") throw new Error(result.message||"Save was not confirmed.");
+
+    if(!result || result.status!=="ok"){
+      throw new Error(result && result.message ? result.message : "Google Sheets did not confirm the registration.");
+    }
+
     form.reset();
-    cityInput.selectedIndex=0;
-    status(result.emailSent===false?"✓ Guest registered successfully. CRM ID: "+guest.id:"✓ Guest registered successfully. Confirmation email sent to "+guest.email+".","success");
+    document.getElementById("city").selectedIndex=0;
+
+    status(
+      result.emailSent===false
+        ? "✓ Guest registered successfully. Confirmation email could not be sent."
+        : "✓ Guest registered successfully. Confirmation email sent to "+email+".",
+      "success"
+    );
   }catch(err){
     console.error(err);
     status("Registration failed: "+err.message,"error");
   }finally{
-    btn.disabled=false; btn.textContent="👤＋ Register Guest";
+    btn.disabled=false;
+    btn.textContent="👤＋ Register Guest";
   }
 });
 </script>
