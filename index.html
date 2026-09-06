@@ -65,6 +65,51 @@ button:disabled{opacity:.6;cursor:wait}
  label{font-size:16px}
  input,textarea{font-size:16px}
 }
+
+  .phone-control{display:flex;gap:9px;align-items:stretch;}
+  .phone-prefix{display:flex;align-items:center;gap:8px;padding:0 14px;border:1.5px solid #d2d9e8;border-radius:12px;background:#f7f8fc;font-weight:800;white-space:nowrap;}
+  .flag{font-size:22px;}
+  .phone-control input{flex:1;min-width:0;}
+  .location-control{display:flex;gap:9px;}
+  .location-control input{flex:1;min-width:0;}
+  .location-btn{background:#eef1f8;color:#172033;white-space:nowrap;padding:12px 15px;min-height:52px;}
+  .location-btn:hover{background:#e2e7f2;}
+  .location-btn:disabled{opacity:.6;cursor:wait;}
+  @media (max-width: 700px){ .phone-control,.location-control{flex-direction:column;} .location-btn{width:100%;} }
+
+/* GDPR checkbox fix */
+.consent-label {
+  display:flex;
+  align-items:flex-start;
+  gap:12px;
+  cursor:pointer;
+  width:100%;
+}
+
+.consent-label input[type="checkbox"] {
+  appearance:auto;
+  -webkit-appearance:checkbox;
+  width:20px !important;
+  min-width:20px !important;
+  height:20px !important;
+  min-height:20px !important;
+  margin:3px 0 0 0 !important;
+  padding:0 !important;
+  border:0 !important;
+  border-radius:3px !important;
+  box-shadow:none !important;
+  background:transparent !important;
+  flex:0 0 20px;
+  cursor:pointer;
+}
+
+.consent-label input[type="checkbox"]:focus {
+  border:0 !important;
+  box-shadow:none !important;
+  outline:2px solid rgba(34,59,145,.35);
+  outline-offset:2px;
+}
+
 </style>
 </head>
 <body>
@@ -78,13 +123,21 @@ button:disabled{opacity:.6;cursor:wait}
     <div id="status" class="status"></div>
     <form id="guestForm">
       <div class="grid">
-        <div class="full">
-          <label>Name <span class="req">*</span></label>
-          <input id="name" required placeholder="Customer name" autocomplete="name">
+        <div>
+          <label>First Name <span class="req">*</span></label>
+          <input id="firstName" required placeholder="First name" autocomplete="given-name">
+        </div>
+        <div>
+          <label>Last Name <span class="req">*</span></label>
+          <input id="lastName" required placeholder="Last name" autocomplete="family-name">
         </div>
         <div>
           <label>Phone <span class="req">*</span></label>
-          <input id="phone" type="tel" required placeholder="+63 ..." autocomplete="tel">
+          <div class="phone-control">
+            <div class="phone-prefix"><span class="flag">🇵🇭</span><span>+63</span></div>
+            <input id="phone" type="tel" required inputmode="numeric" maxlength="10" placeholder="9XX XXX XXXX" autocomplete="tel">
+          </div>
+          <div class="hint">Philippines (+63) — enter the 10-digit mobile number without 0.</div>
         </div>
         <div>
           <label>Email <span class="req">*</span></label>
@@ -95,23 +148,43 @@ button:disabled{opacity:.6;cursor:wait}
           <input id="birthday" type="date">
         </div>
         <div>
-          <label>City</label>
-          <input id="city" placeholder="City" autocomplete="address-level2">
+          <label>Location</label>
+          <div class="location-control">
+            <input id="city" placeholder="Use GPS to get location" readonly>
+            <button type="button" id="locationBtn" class="location-btn">📍 Use GPS</button>
+          </div>
+          <div id="locationStatus" class="hint">Tap Use GPS to detect the guest's city.</div>
         </div>
         <div>
           <label>Favorite</label>
           <input id="favorite" placeholder="Favorite dish / drink">
         </div>
-        <div>
-          <label>Tags</label>
-          <input id="tags" placeholder="e.g. birthday, family, delivery">
-          <div class="hint">Separate multiple tags with commas.</div>
-        </div>
-        <div class="full">
-          <label>Notes</label>
-          <textarea id="notes" placeholder="Customer preferences, notes, special occasions..."></textarea>
+      </div>
+
+      <div class="consent-box">
+        <label class="consent-label">
+          <input type="checkbox" id="gdprConsent" name="gdprConsent" required>
+          <span>
+            <strong>Privacy &amp; consent</strong><br>
+            I consent to Greek To Go Taverna collecting and using the personal
+            information I provide on this form for guest registration, CRM
+            management, customer service, and related communications.
+            I understand that my information will be stored securely in the
+            restaurant's CRM/Google Sheet and may be used to contact me about
+            my guest relationship. I may request access, correction, or deletion
+            of my personal data, subject to applicable law.
+          </span>
+        </label>
+        <div class="gdpr-disclaimer">
+          <strong>GDPR / Data Protection Notice:</strong>
+          Please provide only information you consent to share. Your information
+          will be handled for the purposes stated above and retained only as
+          reasonably necessary for those purposes or as required by law.
+          For privacy requests or questions about your data, please contact
+          Greek To Go Taverna directly.
         </div>
       </div>
+
       <div class="actions">
         <button id="registerBtn" type="submit">👤＋ Register Guest</button>
       </div>
@@ -127,6 +200,9 @@ const GOOGLE_SCRIPT_URL = "PASTE_YOUR_EXISTING_GOOGLE_APPS_SCRIPT_EXEC_URL_HERE"
 const form=document.getElementById("guestForm");
 const btn=document.getElementById("registerBtn");
 const statusBox=document.getElementById("status");
+const locationBtn=document.getElementById("locationBtn");
+const cityInput=document.getElementById("city");
+const locationStatus=document.getElementById("locationStatus");
 
 function status(message,type){
   statusBox.textContent=message;
@@ -140,12 +216,53 @@ function dateTime(d){
   return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+" "+p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds());
 }
 
+locationBtn.addEventListener("click",()=>{
+  if(!navigator.geolocation){
+    locationStatus.textContent="GPS is not supported by this browser.";
+    return;
+  }
+  locationBtn.disabled=true;
+  locationBtn.textContent="📍 Locating...";
+  locationStatus.textContent="Getting current location...";
+  navigator.geolocation.getCurrentPosition(async pos=>{
+    const lat=pos.coords.latitude, lon=pos.coords.longitude;
+    try{
+      const r=await fetch("https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat="+encodeURIComponent(lat)+"&lon="+encodeURIComponent(lon),{headers:{"Accept-Language":"en"}});
+      if(!r.ok) throw new Error("lookup failed");
+      const data=await r.json(), a=data.address||{};
+      const city=a.city||a.town||a.municipality||a.village||a.county||"";
+      cityInput.value=city||`${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+      locationStatus.textContent=city?"✓ Location detected: "+city:"✓ GPS coordinates detected.";
+    }catch(err){
+      cityInput.value=`${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+      locationStatus.textContent="✓ GPS coordinates detected.";
+    }finally{
+      locationBtn.disabled=false;
+      locationBtn.textContent="📍 Use GPS";
+    }
+  },err=>{
+    const msg=err.code===1?"Location permission was denied. Please allow GPS access.":err.code===2?"Your location is unavailable.":err.code===3?"Location request timed out. Please try again.":"Unable to get your location.";
+    locationStatus.textContent=msg;
+    locationBtn.disabled=false;
+    locationBtn.textContent="📍 Use GPS";
+  },{enableHighAccuracy:true,timeout:15000,maximumAge:60000});
+});
+
 form.addEventListener("submit",async e=>{
   e.preventDefault();
   if(GOOGLE_SCRIPT_URL.includes("PASTE_YOUR_EXISTING")){
     status("Google Sheets is not configured. Add your existing Apps Script /exec URL in the HTML.","error");
     return;
   }
+  const firstName=document.getElementById("firstName").value.trim();
+  const lastName=document.getElementById("lastName").value.trim();
+  const rawPhone=document.getElementById("phone").value.replace(/\D/g,"");
+  const email=document.getElementById("email").value.trim();
+  if(!/^9\d{9}$/.test(rawPhone)){
+    status("Enter a valid Philippine mobile number, e.g. 9171234567.","error");
+    return;
+  }
+  const phone="+63"+rawPhone;
   btn.disabled=true; btn.textContent="Registering...";
   try{
     const r=await fetch(GOOGLE_SCRIPT_URL+"?ts="+Date.now(),{cache:"no-store"});
@@ -153,36 +270,35 @@ form.addEventListener("submit",async e=>{
     const data=await r.json();
     if(!Array.isArray(data.guests)) throw new Error("Invalid CRM response.");
     const guests=data.guests;
-    const phone=document.getElementById("phone").value.trim();
     const normalized=phone.replace(/\D/g,"");
     if(guests.some(g=>String(g.phone||"").replace(/\D/g,"")===normalized && normalized)){
       throw new Error("This phone number is already registered.");
     }
     const guest={
       id:id(),
-      name:document.getElementById("name").value.trim(),
+      name:(firstName+" "+lastName).trim(),
       phone:phone,
-      email:document.getElementById("email").value.trim(),
+      email:email,
       visits:0,lastVisit:"",totalSpent:0,
       favorite:document.getElementById("favorite").value.trim(),
-      notes:document.getElementById("notes").value.trim(),
       birthday:document.getElementById("birthday").value,
-      segment:"",
-      tags:document.getElementById("tags").value.split(",").map(x=>x.trim()).filter(Boolean),
-      city:document.getElementById("city").value.trim(),
+      segment:"",notes:"",
+      city:cityInput.value.trim(),
       joinDate:dateTime(new Date())
     };
     guests.push(guest);
     const save=await fetch(GOOGLE_SCRIPT_URL,{
       method:"POST",
       headers:{"Content-Type":"text/plain;charset=utf-8"},
-      body:JSON.stringify({guests})
+      body:JSON.stringify({guests:guests,confirmationGuest:guest})
     });
     if(!save.ok) throw new Error("Could not save guest.");
     const result=await save.json();
-    if(result.status!=="ok") throw new Error("Save was not confirmed.");
+    if(result.status!=="ok") throw new Error(result.message||"Save was not confirmed.");
     form.reset();
-    status("✓ Guest registered successfully. CRM ID: "+guest.id,"success");
+    cityInput.value="";
+    locationStatus.textContent="Tap Use GPS to detect the guest's city.";
+    status(result.emailSent===false?"✓ Guest registered successfully. CRM ID: "+guest.id:"✓ Guest registered successfully. Confirmation email sent to "+guest.email+".","success");
   }catch(err){
     console.error(err);
     status("Registration failed: "+err.message,"error");
