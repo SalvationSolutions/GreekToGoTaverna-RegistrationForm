@@ -619,7 +619,7 @@ button,input,select,textarea{
           <label>Phone <span class="req">*</span></label>
           <div class="phone-control">
             <div class="phone-prefix"><span class="flag">🇵🇭</span><span>+63</span></div>
-            <input id="phone" type="tel" required inputmode="numeric" maxlength="10" placeholder="9XX XXX XXXX" autocomplete="tel">
+            <input id="phone" type="tel" required inputmode="numeric" maxlength="13" placeholder="9171234567 / 09171234567" autocomplete="tel">
           </div>
           <div class="hint">Philippines (+63) — enter the 10-digit mobile number without 0.</div>
         </div>
@@ -844,7 +844,7 @@ button,input,select,textarea{
           </span>
         </label>
         <div class="gdpr-disclaimer">
-          <strong>GDPR / Data Protection Notice:</strong>
+          <strong>Privacy / Data Protection Notice:</strong>
           Please provide only information you consent to share. Your information
           will be handled for the purposes stated above and retained only as
           reasonably necessary for those purposes or as required by law.
@@ -869,6 +869,26 @@ const form=document.getElementById("guestForm");
 const btn=document.getElementById("registerBtn");
 const statusBox=document.getElementById("status");
 const cityInput=document.getElementById("city");
+const birthdayInput=document.getElementById("birthday");
+const phoneInput=document.getElementById("phone");
+const REQUEST_TIMEOUT_MS=20000;
+
+// Prevent accidental future birth dates.
+const today=new Date();
+const localToday=new Date(today.getTime()-today.getTimezoneOffset()*60000).toISOString().slice(0,10);
+birthdayInput.max=localToday;
+
+function normalizePhilippineMobile(value){
+  let digits=String(value || "").replace(/\D/g,"");
+  if(/^639\d{9}$/.test(digits)) digits=digits.slice(2);
+  else if(/^09\d{9}$/.test(digits)) digits=digits.slice(1);
+  return /^9\d{9}$/.test(digits) ? "+63"+digits : "";
+}
+
+phoneInput.addEventListener("input",()=>{
+  // Keep the field numeric-friendly while allowing common PH formats.
+  phoneInput.value=phoneInput.value.replace(/[^\d+ ()-]/g,"").slice(0,13);
+});
 
 function status(message,type){
   statusBox.textContent=message;
@@ -888,23 +908,35 @@ form.addEventListener("submit",async e=>{
 
   const firstName=document.getElementById("firstName").value.trim();
   const lastName=document.getElementById("lastName").value.trim();
-  const rawPhone=document.getElementById("phone").value.replace(/\D/g,"");
-  const email=document.getElementById("email").value.trim();
+  const rawPhone=document.getElementById("phone").value;
+  const email=document.getElementById("email").value.trim().toLowerCase();
   const birthday=document.getElementById("birthday").value;
   const city=document.getElementById("city").value;
   const favorite=document.getElementById("favorite").value.trim();
+
+  if(!form.checkValidity()){
+    form.reportValidity();
+    status("Please complete all required fields correctly.","error");
+    return;
+  }
 
   if(!firstName || !lastName || !email || !city){
     status("Please complete all required fields.","error");
     return;
   }
 
-  if(!/^9\d{9}$/.test(rawPhone)){
-    status("Enter a valid Philippine mobile number, e.g. 9171234567.","error");
+  const phone=normalizePhilippineMobile(rawPhone);
+  if(!phone){
+    status("Enter a valid Philippine mobile number: 9171234567, 09171234567, or +639171234567.","error");
+    phoneInput.focus();
     return;
   }
 
-  const phone="+63"+rawPhone;
+  if(birthday && birthday>localToday){
+    status("Birthday cannot be a future date.","error");
+    birthdayInput.focus();
+    return;
+  }
 
   if(!document.getElementById("gdprConsent").checked){
     status("Please accept the Privacy & consent checkbox before registering.","error");
@@ -926,12 +958,16 @@ form.addEventListener("submit",async e=>{
   btn.disabled=true;
   btn.textContent="Registering...";
 
+  const controller=new AbortController();
+  const timeoutId=setTimeout(()=>controller.abort(),REQUEST_TIMEOUT_MS);
+
   try{
     const save=await fetch(GOOGLE_SCRIPT_URL,{
       method:"POST",
       headers:{"Content-Type":"text/plain;charset=utf-8"},
       body:JSON.stringify({action:"registerGuest",guest:guest,confirmationGuest:guest}),
-      redirect:"follow"
+      redirect:"follow",
+      signal:controller.signal
     });
 
     if(!save.ok) throw new Error("Google Sheets returned HTTP "+save.status+".");
@@ -953,8 +989,13 @@ form.addEventListener("submit",async e=>{
     }
   }catch(err){
     console.error(err);
-    status("Registration failed: "+err.message,"error");
+    if(err && err.name==="AbortError"){
+      status("Registration timed out after 20 seconds. Please check your connection and try again. If you are unsure whether it saved, check the Guest List first to avoid a duplicate.","error");
+    }else{
+      status("Registration failed: "+err.message,"error");
+    }
   }finally{
+    clearTimeout(timeoutId);
     btn.disabled=false;
     btn.textContent="👤＋ Register Guest";
   }
